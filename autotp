@@ -1,0 +1,104 @@
+local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local TARGET = Vector3.new(18.1, 0.3, 133.0)
+
+local enabled = true
+local moving = false
+
+-- Toggle
+UIS.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.T then
+		enabled = not enabled
+		print("Auto:", enabled and "ON" or "OFF")
+	end
+end)
+
+-- Combat detect (lebih aman)
+local lastHealth = nil
+local function isFighting()
+	local char = player.Character
+	if not char then return true end
+
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum then return true end
+
+	-- detect damage baru (bukan HP kurang doang)
+	if lastHealth and hum.Health < lastHealth then
+		lastHealth = hum.Health
+		return true
+	end
+
+	lastHealth = hum.Health
+
+	-- custom flag
+	if char:FindFirstChild("InCombat") then
+		return true
+	end
+
+	return false
+end
+
+-- Stop movement paksa
+local function stopMove(hum)
+	hum:MoveTo(hum.RootPart.Position)
+end
+
+-- Pathfinding
+local function goTo(pos)
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not root then return end
+
+	local path = PathfindingService:CreatePath()
+	path:ComputeAsync(root.Position, pos)
+
+	if path.Status ~= Enum.PathStatus.Success then
+		hum:MoveTo(pos)
+		return
+	end
+
+	moving = true
+	for _, wp in ipairs(path:GetWaypoints()) do
+		if not enabled or isFighting() then
+			stopMove(hum)
+			break
+		end
+
+		if wp.Action == Enum.PathWaypointAction.Jump then
+			hum.Jump = true
+		end
+
+		hum:MoveTo(wp.Position)
+
+		local reached = hum.MoveToFinished:Wait(1.5)
+		if not reached then
+			print("Repath...")
+			break
+		end
+	end
+	moving = false
+end
+
+-- Main loop
+task.spawn(function()
+	while true do
+		task.wait(0.4)
+
+		if not enabled or moving or isFighting() then continue end
+
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+
+		if root then
+			local dist = (root.Position - TARGET).Magnitude
+			if dist > 4 then
+				goTo(TARGET)
+			end
+		end
+	end
+end)
